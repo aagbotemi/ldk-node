@@ -11,7 +11,7 @@
 
 use crate::config::LDK_PAYMENT_RETRY_TIMEOUT;
 use crate::error::Error;
-use crate::ffi::{maybe_deref, maybe_wrap};
+use crate::ffi::{maybe_deref, maybe_wrap_arc};
 use crate::logger::{log_error, log_info, LdkLogger, Logger};
 use crate::payment::store::{PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus};
 use crate::types::{ChannelManager, PaymentStore};
@@ -311,7 +311,7 @@ impl Bolt12Payment {
 		&self, amount_msat: u64, description: &str, expiry_secs: Option<u32>, quantity: Option<u64>,
 	) -> Result<Offer, Error> {
 		let offer = self.receive_inner(amount_msat, description, expiry_secs, quantity)?;
-		Ok(maybe_wrap(offer))
+		Ok(maybe_wrap_arc(offer))
 	}
 
 	/// Returns a payable offer that can be used to request and receive a payment for which the
@@ -335,7 +335,7 @@ impl Bolt12Payment {
 			Error::OfferCreationFailed
 		})?;
 
-		Ok(maybe_wrap(offer))
+		Ok(maybe_wrap_arc(offer))
 	}
 
 	/// Requests a refund payment for the given [`Refund`].
@@ -374,7 +374,7 @@ impl Bolt12Payment {
 
 		self.payment_store.insert(payment)?;
 
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	/// Returns a [`Refund`] object that can be used to offer a refund payment of the amount given.
@@ -441,6 +441,6 @@ impl Bolt12Payment {
 
 		self.payment_store.insert(payment)?;
 
-		Ok(maybe_wrap(refund))
+		Ok(maybe_wrap_arc(refund))
 	}
 }

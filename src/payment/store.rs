@@ -15,7 +15,7 @@ use lightning::{
 	impl_writeable_tlv_based_enum, write_tlv_fields,
 };
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage, PaymentSecret};
+use lightning_types::payment::{PaymentHash, PaymentSecret};
 
 use bitcoin::{BlockHash, Txid};
 
@@ -23,6 +23,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::data_store::{StorableObject, StorableObjectId, StorableObjectUpdate};
 use crate::hex_utils;
+use crate::payment::PaymentPreimage;
 
 /// Represents a payment.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -221,40 +222,40 @@ impl StorableObject for PaymentDetails {
 				},
 			}
 		}
-		if let Some(preimage_opt) = update.preimage {
+		if let Some(preimage_opt) = &update.preimage {
 			match self.kind {
 				PaymentKind::Bolt11 { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt11Jit { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt12Offer { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt12Refund { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Spontaneous { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				_ => {},
 			}
 		}
 
-		if let Some(secret_opt) = update.secret {
+		if let Some(secret_opt) = &update.secret {
 			match self.kind {
 				PaymentKind::Bolt11 { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt11Jit { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt12Offer { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt12Refund { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				_ => {},
 			}
@@ -563,13 +564,17 @@ impl PaymentDetailsUpdate {
 
 impl From<&PaymentDetails> for PaymentDetailsUpdate {
 	fn from(value: &PaymentDetails) -> Self {
-		let (hash, preimage, secret) = match value.kind {
+		let (hash, preimage, secret) = match &value.kind {
 			PaymentKind::Bolt11 { hash, preimage, secret, .. } => (Some(hash), preimage, secret),
 			PaymentKind::Bolt11Jit { hash, preimage, secret, .. } => (Some(hash), preimage, secret),
-			PaymentKind::Bolt12Offer { hash, preimage, secret, .. } => (hash, preimage, secret),
-			PaymentKind::Bolt12Refund { hash, preimage, secret, .. } => (hash, preimage, secret),
-			PaymentKind::Spontaneous { hash, preimage, .. } => (Some(hash), preimage, None),
-			_ => (None, None, None),
+			PaymentKind::Bolt12Offer { hash, preimage, secret, .. } => {
+				(hash.as_ref(), preimage, secret)
+			},
+			PaymentKind::Bolt12Refund { hash, preimage, secret, .. } => {
+				(hash.as_ref(), preimage, secret)
+			},
+			PaymentKind::Spontaneous { hash, preimage, .. } => (Some(hash), preimage, &None),
+			_ => (None, &None, &None),
 		};
 
 		let confirmation_status = match value.kind {
@@ -586,9 +591,9 @@ impl From<&PaymentDetails> for PaymentDetailsUpdate {
 
 		Self {
 			id: value.id,
-			hash: Some(hash),
-			preimage: Some(preimage),
-			secret: Some(secret),
+			hash: Some(hash.copied()),
+			preimage: Some(preimage.clone()),
+			secret: Some(*secret),
 			amount_msat: Some(value.amount_msat),
 			fee_paid_msat: Some(value.fee_paid_msat),
 			counterparty_skimmed_fee_msat,
@@ -608,8 +613,10 @@ impl StorableObjectUpdate<PaymentDetails> for PaymentDetailsUpdate {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::ffi::maybe_wrap;
 	use bitcoin::io::Cursor;
 	use lightning::util::ser::Readable;
+	use lightning_types::payment::PaymentPreimage as LdkPaymentPreimage;
 
 	/// We refactored `PaymentDetails` to hold a payment id and moved some required fields into
 	/// `PaymentKind`. Here, we keep the old layout available in order test de/ser compatibility.
@@ -639,7 +646,7 @@ mod tests {
 		// We refactored `PaymentDetails` to hold a payment id and moved some required fields into
 		// `PaymentKind`. Here, we test compatibility with the old layout.
 		let hash = PaymentHash([42u8; 32]);
-		let preimage = Some(PaymentPreimage([43u8; 32]));
+		let preimage = Some(LdkPaymentPreimage([43u8; 32]));
 		let secret = Some(PaymentSecret([44u8; 32]));
 		let amount_msat = Some(45_000_000);
 
@@ -647,7 +654,7 @@ mod tests {
 		{
 			let old_bolt11_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: preimage.map(|preimage| maybe_wrap(preimage)),
 				secret,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -672,7 +679,7 @@ mod tests {
 			match bolt11_decoded.kind {
 				PaymentKind::Bolt11 { hash: h, preimage: p, secret: s } => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					assert_eq!(preimage.map(|preimage| maybe_wrap(preimage)), p);
 					assert_eq!(secret, s);
 				},
 				_ => {
@@ -690,7 +697,7 @@ mod tests {
 
 			let old_bolt11_jit_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: preimage.map(|preimage| maybe_wrap(preimage)),
 				secret,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -721,7 +728,7 @@ mod tests {
 					lsp_fee_limits: l,
 				} => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					assert_eq!(preimage.map(|preimage| maybe_wrap(preimage)), p);
 					assert_eq!(secret, s);
 					assert_eq!(None, c);
 					assert_eq!(lsp_fee_limits, Some(l));
@@ -736,7 +743,7 @@ mod tests {
 		{
 			let old_spontaneous_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: preimage.map(|preimage| maybe_wrap(preimage)),
 				secret: None,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -761,7 +768,7 @@ mod tests {
 			match spontaneous_decoded.kind {
 				PaymentKind::Spontaneous { hash: h, preimage: p } => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					assert_eq!(preimage.map(|preimage| maybe_wrap(preimage)), p);
 				},
 				_ => {
 					panic!("Unexpected kind!");

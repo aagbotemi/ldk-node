@@ -212,6 +212,10 @@ interface SpontaneousPayment {
 	[Throws=NodeError]
 	PaymentId send_with_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs);
 	[Throws=NodeError]
+	PaymentId send_with_preimage(u64 amount_msat, PublicKey node_id, PaymentPreimage preimage, SendingParameters? sending_parameters);
+	[Throws=NodeError]
+	PaymentId send_with_preimage_and_custom_tlvs(u64 amount_msat, PublicKey node_id, sequence<CustomTlvRecord> custom_tlvs, PaymentPreimage preimage, SendingParameters? sending_parameters);
+	[Throws=NodeError]
 	void send_probes(u64 amount_msat, PublicKey node_id);
 };
 
@@ -444,6 +448,10 @@ dictionary PaymentDetails {
 	PaymentDirection direction;
 	PaymentStatus status;
 	u64 latest_update_timestamp;
+};
+
+dictionary PaymentPreimage {
+	bytes inner;
 };
 
 dictionary SendingParameters {
@@ -828,9 +836,6 @@ typedef string PaymentId;
 
 [Custom]
 typedef string PaymentHash;
-
-[Custom]
-typedef string PaymentPreimage;
 
 [Custom]
 typedef string PaymentSecret;

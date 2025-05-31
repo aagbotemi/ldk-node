@@ -9,16 +9,17 @@
 
 use crate::config::{Config, LDK_PAYMENT_RETRY_TIMEOUT};
 use crate::error::Error;
+use crate::ffi::{maybe_extract, maybe_wrap};
 use crate::logger::{log_error, log_info, LdkLogger, Logger};
 use crate::payment::store::{PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus};
-use crate::payment::SendingParameters;
+use crate::payment::{PaymentPreimage, SendingParameters};
 use crate::types::{ChannelManager, CustomTlvRecord, KeysManager, PaymentStore};
 
 use lightning::ln::channelmanager::{PaymentId, RecipientOnionFields, Retry, RetryableSendFailure};
 use lightning::routing::router::{PaymentParameters, RouteParameters};
 use lightning::sign::EntropySource;
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage};
+use lightning_types::payment::{PaymentHash, PaymentPreimage as LdkPaymentPreimage};
 
 use bitcoin::secp256k1::PublicKey;
 
@@ -57,7 +58,7 @@ impl SpontaneousPayment {
 	pub fn send(
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
 	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, None)
+		self.send_inner(amount_msat, node_id, sending_parameters, None, None)
 	}
 
 	/// Send a spontaneous payment including a list of custom TLVs.
@@ -65,19 +66,39 @@ impl SpontaneousPayment {
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
 		custom_tlvs: Vec<CustomTlvRecord>,
 	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs))
+		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs), None)
+	}
+
+	/// Send a spontaneous payment with custom preimage
+	pub fn send_with_preimage(
+		&self, amount_msat: u64, node_id: PublicKey, preimage: PaymentPreimage,
+		sending_parameters: Option<SendingParameters>,
+	) -> Result<PaymentId, Error> {
+		self.send_inner(amount_msat, node_id, sending_parameters, None, Some(preimage))
+	}
+
+	/// Send a spontaneous payment with custom preimage including a list of custom TLVs.
+	pub fn send_with_preimage_and_custom_tlvs(
+		&self, amount_msat: u64, node_id: PublicKey, custom_tlvs: Vec<CustomTlvRecord>,
+		preimage: PaymentPreimage, sending_parameters: Option<SendingParameters>,
+	) -> Result<PaymentId, Error> {
+		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs), Some(preimage))
 	}
 
 	fn send_inner(
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		custom_tlvs: Option<Vec<CustomTlvRecord>>,
+		custom_tlvs: Option<Vec<CustomTlvRecord>>, preimage: Option<PaymentPreimage>,
 	) -> Result<PaymentId, Error> {
 		let rt_lock = self.runtime.read().unwrap();
 		if rt_lock.is_none() {
 			return Err(Error::NotRunning);
 		}
 
-		let payment_preimage = PaymentPreimage(self.keys_manager.get_secure_random_bytes());
+		let payment_preimage = if let Some(payment_preimage) = preimage {
+			maybe_extract(payment_preimage)?
+		} else {
+			LdkPaymentPreimage(self.keys_manager.get_secure_random_bytes())
+		};
 		let payment_hash = PaymentHash::from(payment_preimage);
 		let payment_id = PaymentId(payment_hash.0);
 
@@ -132,7 +153,7 @@ impl SpontaneousPayment {
 
 				let kind = PaymentKind::Spontaneous {
 					hash: payment_hash,
-					preimage: Some(payment_preimage),
+					preimage: Some(maybe_wrap(payment_preimage)),
 				};
 				let payment = PaymentDetails::new(
 					payment_id,
@@ -154,7 +175,7 @@ impl SpontaneousPayment {
 					_ => {
 						let kind = PaymentKind::Spontaneous {
 							hash: payment_hash,
-							preimage: Some(payment_preimage),
+							preimage: Some(maybe_wrap(payment_preimage)),
 						};
 						let payment = PaymentDetails::new(
 							payment_id,

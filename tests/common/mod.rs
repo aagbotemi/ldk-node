@@ -783,7 +783,7 @@ pub(crate) fn do_channel_full_cycle<E: ElectrumApi>(
 	);
 	node_b
 		.bolt11_payment()
-		.claim_for_hash(manual_payment_hash, claimable_amount_msat, manual_preimage)
+		.claim_for_hash(manual_payment_hash, claimable_amount_msat, manual_preimage.into())
 		.unwrap();
 	expect_payment_received_event!(node_b, claimable_amount_msat);
 	expect_payment_successful_event!(node_a, Some(manual_payment_id), None);
