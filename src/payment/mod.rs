@@ -16,6 +16,7 @@ mod unified_qr;
 
 pub use bolt11::Bolt11Payment;
 pub use bolt12::Bolt12Payment;
+pub use lightning_types::payment::PaymentPreimage;
 pub use onchain::OnchainPayment;
 pub use spontaneous::SpontaneousPayment;
 pub use store::{
@@ -76,6 +77,8 @@ pub struct SendingParameters {
 	///
 	/// Default value: 2
 	pub max_channel_saturation_power_of_half: Option<u8>,
+	/// Custom preimage to use for the payment.
+	pub preimage: Option<PaymentPreimage>,
 }
 
 /// Represents the possible states of [`SendingParameters::max_total_routing_fee_msat`].
