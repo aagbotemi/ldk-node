@@ -29,8 +29,6 @@ use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::util::persist::KVStore;
 
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
-
-use ldk_node::CustomTlvRecord;
 use lightning_types::payment::PaymentPreimage;
 
 use bitcoin::address::NetworkUnchecked;
@@ -209,6 +207,7 @@ fn multi_hop_sending() {
 		max_total_cltv_expiry_delta: Some(1000),
 		max_path_count: Some(10),
 		max_channel_saturation_power_of_half: Some(2),
+		preimage: None,
 	};
 
 	let invoice_description =
@@ -1414,10 +1413,18 @@ fn spontaneous_send_with_custom_preimage() {
 	let custom_bytes = bytes.to_byte_array();
 	let custom_preimage = PaymentPreimage(custom_bytes);
 
+	let sending_parameters = SendingParameters {
+		max_total_routing_fee_msat: Some(Some(75_000).into()),
+		max_total_cltv_expiry_delta: Some(1000),
+		max_path_count: Some(10),
+		max_channel_saturation_power_of_half: Some(2),
+		preimage: Some(custom_preimage),
+	};
+
 	let amount_msat = 100_000;
 	let payment_id = node_a
 		.spontaneous_payment()
-		.send_with_preimage(amount_msat, node_b.node_id(), None, custom_preimage.clone())
+		.send(amount_msat, node_b.node_id(), Some(sending_parameters))
 		.unwrap();
 
 	// check payment status and verify stored preimage

@@ -57,7 +57,7 @@ impl SpontaneousPayment {
 	pub fn send(
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
 	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, None, None)
+		self.send_inner(amount_msat, node_id, sending_parameters, None)
 	}
 
 	/// Send a spontaneous payment including a list of custom TLVs.
@@ -65,35 +65,21 @@ impl SpontaneousPayment {
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
 		custom_tlvs: Vec<CustomTlvRecord>,
 	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs), None)
-	}
-
-	/// Send a spontaneous with custom preimage
-	pub fn send_with_preimage(
-		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		preimage: PaymentPreimage,
-	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, None, Some(preimage))
-	}
-
-	/// Send a spontaneous payment with custom preimage including a list of custom TLVs.
-	pub fn send_with_preimage_and_custom_tlvs(
-		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		custom_tlvs: Vec<CustomTlvRecord>, preimage: PaymentPreimage,
-	) -> Result<PaymentId, Error> {
-		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs), Some(preimage))
+		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs))
 	}
 
 	fn send_inner(
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		custom_tlvs: Option<Vec<CustomTlvRecord>>, preimage: Option<PaymentPreimage>,
+		custom_tlvs: Option<Vec<CustomTlvRecord>>,
 	) -> Result<PaymentId, Error> {
 		let rt_lock = self.runtime.read().unwrap();
 		if rt_lock.is_none() {
 			return Err(Error::NotRunning);
 		}
 
-		let payment_preimage = preimage
+		let payment_preimage = sending_parameters
+			.as_ref()
+			.and_then(|sp| sp.preimage)
 			.unwrap_or_else(|| PaymentPreimage(self.keys_manager.get_secure_random_bytes()));
 		let payment_hash = PaymentHash::from(payment_preimage);
 		let payment_id = PaymentId(payment_hash.0);
