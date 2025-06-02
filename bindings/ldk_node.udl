@@ -213,6 +213,10 @@ interface SpontaneousPayment {
 	PaymentId send_with_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs);
 	[Throws=NodeError]
 	void send_probes(u64 amount_msat, PublicKey node_id);
+	[Throws=NodeError]
+	PaymentId send_with_preimage(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, PaymentPreimage preimage);
+	[Throws=NodeError]
+	PaymentId send_with_preimage_and_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs, PaymentPreimage preimage);
 };
 
 interface OnchainPayment {
@@ -451,7 +455,6 @@ dictionary SendingParameters {
 	u32? max_total_cltv_expiry_delta;
 	u8? max_path_count;
 	u8? max_channel_saturation_power_of_half;
-	PaymentPreimage? preimage;
 };
 
 dictionary CustomTlvRecord {
