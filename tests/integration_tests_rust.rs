@@ -1428,4 +1428,24 @@ fn spontaneous_send_with_custom_preimage() {
 	} else {
 		panic!("Expected a spontaneous PaymentKind with a preimage");
 	}
+
+	// Verify receiver side (node_b)
+	expect_payment_received_event!(node_b, amount_msat);
+	let receiver_payments: Vec<PaymentDetails> = node_b.list_payments_with_filter(|p| {
+		p.direction == PaymentDirection::Inbound
+			&& matches!(p.kind, PaymentKind::Spontaneous { .. })
+	});
+
+	assert_eq!(receiver_payments.len(), 1);
+	let receiver_details = &receiver_payments[0];
+	assert_eq!(receiver_details.status, PaymentStatus::Succeeded);
+	assert_eq!(receiver_details.amount_msat, Some(amount_msat));
+	assert_eq!(receiver_details.direction, PaymentDirection::Inbound);
+
+	// Verify receiver also has the same preimage
+	if let PaymentKind::Spontaneous { preimage: Some(pi), .. } = receiver_details.kind {
+		assert_eq!(pi.0, custom_bytes);
+	} else {
+		panic!("Expected receiver to have spontaneous PaymentKind with preimage");
+	}
 }
