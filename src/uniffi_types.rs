@@ -31,7 +31,9 @@ pub use lightning::offers::refund::Refund;
 pub use lightning::routing::gossip::{NodeAlias, NodeId, RoutingFees};
 pub use lightning::util::string::UntrustedString;
 
-pub use lightning_types::payment::{PaymentHash, PaymentPreimage, PaymentSecret};
+pub use lightning_types::payment::{
+	PaymentHash, PaymentPreimage as LdkPaymentPreimage, PaymentSecret,
+};
 
 pub use lightning_invoice::{Description, SignedRawBolt11Invoice};
 
@@ -206,6 +208,181 @@ impl UniffiCustomTypeConverter for PaymentHash {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaymentPreimage {
+	pub inner: LdkPaymentPreimage,
+}
+impl PaymentPreimage {
+	pub fn from_hex(hex_str: &str) -> Result<Self, Error> {
+		let bytes_vec = hex_utils::to_vec(hex_str).ok_or(Error::InvalidPaymentPreimage)?;
+
+		let bytes: [u8; 32] = bytes_vec.try_into().map_err(|_| Error::InvalidPaymentPreimage)?;
+
+		Ok(Self { inner: LdkPaymentPreimage(bytes) })
+	}
+
+	pub fn to_hex(&self) -> String {
+		hex_utils::to_string(&self.inner.0)
+	}
+
+	// pub fn into_inner(self) -> LdkPaymentPreimage {
+	// 	self.inner
+	// }
+
+	// pub fn to_event_string(&self) -> String {
+	// 	self.to_hex()
+	// }
+
+	// pub fn from_event_string(s: &str) -> Result<Self, Error> {
+	// 	Self::from_hex(s)
+	// }
+}
+
+impl From<LdkPaymentPreimage> for PaymentPreimage {
+	fn from(preimage: LdkPaymentPreimage) -> Self {
+		PaymentPreimage { inner: preimage }
+	}
+}
+
+impl From<PaymentPreimage> for LdkPaymentPreimage {
+	fn from(wrapper: PaymentPreimage) -> Self {
+		wrapper.inner
+	}
+}
+
+impl std::str::FromStr for PaymentPreimage {
+	type Err = Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Self::from_hex(s)
+	}
+}
+
+// Implement FFI conversions
+// impl UniffiType for PaymentPreimage {
+// 	type LdkType = LdkPaymentPreimage;
+
+// 	fn from_ldk(ldk_value: Self::LdkType) -> Self {
+// 		PaymentPreimage { inner: ldk_value }
+// 	}
+// }
+
+// impl UniffiConversionType for PaymentPreimage {
+// 	fn as_ldk(&self) -> Self::LdkType {
+// 		self.inner.clone()
+// 	}
+// }
+
+// // Update event handling to use the wrapper
+// impl UniffiType for Event {
+// 	type LdkType = crate::event::Event;
+
+// 	fn from_ldk(ldk_value: Self::LdkType) -> Self {
+// 		match ldk_value {
+// 			crate::event::Event::PaymentSuccessful {
+// 				payment_id,
+// 				payment_hash,
+// 				payment_preimage,
+// 				fee_paid_msat,
+// 			} => Event::PaymentSuccessful {
+// 				payment_id,
+// 				payment_hash,
+// 				payment_preimage: payment_preimage.map(|p| PaymentPreimage::from_ldk(p)),
+// 				fee_paid_msat,
+// 			}, // Handle other event variants similarly...
+// 		}
+// 	}
+// }
+
+/*
+pub trait UniffiType {
+	type LdkType;
+
+	fn from_ldk(ldk_value: Self::LdkType) -> Self;
+}
+
+pub trait UniffiConversionType: UniffiType {
+	fn as_ldk(&self) -> Self::LdkType;
+}
+
+pub trait UniffiFallibleConversionType: UniffiType {
+	fn try_as_ldk(&self) -> Result<Self::LdkType, Error>;
+}
+
+impl UniffiType for Arc<PaymentPreimage> {
+	type LdkType = LdkPaymentPreimage;
+
+	fn from_ldk(ldk_value: Self::LdkType) -> Self {
+		Arc::new(PaymentPreimage { inner: ldk_value })
+	}
+}
+
+impl UniffiConversionType for Arc<PaymentPreimage> {
+	fn as_ldk(&self) -> Self::LdkType {
+		self.inner.clone()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentPreimage {
+	pub inner: LdkPaymentPreimage,
+}
+
+impl PaymentPreimage {
+	/// Creates a new PaymentPreimage from a 32-byte array.
+	pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+		if bytes.len() != 32 {
+			return Err(Error::InvalidPaymentPreimage);
+		}
+
+		let mut array = [0u8; 32];
+		array.copy_from_slice(bytes);
+
+		Ok(Self { inner: LdkPaymentPreimage(array) })
+	}
+
+	/// Returns the raw 32-byte array representation as a Vec<u8>
+	pub fn to_bytes(&self) -> Vec<u8> {
+		self.inner.0.to_vec()
+	}
+
+	/// Creates a PaymentPreimage from a hexadecimal string.
+	pub fn from_hex(hex_str: &str) -> Result<Self, Error> {
+		if let Some(bytes_vec) = hex_utils::to_vec(hex_str) {
+			if bytes_vec.len() == 32 {
+				return Self::from_bytes(&bytes_vec);
+			}
+		}
+		Err(Error::InvalidPaymentPreimage)
+	}
+
+	/// Converts the PaymentPreimage to a hexadecimal string representation.
+	pub fn to_hex(&self) -> String {
+		hex_utils::to_string(&self.inner.0)
+	}
+}
+
+impl From<LdkPaymentPreimage> for PaymentPreimage {
+	fn from(inner: LdkPaymentPreimage) -> Self {
+		Self { inner }
+	}
+}
+
+impl From<PaymentPreimage> for LdkPaymentPreimage {
+	fn from(wrapper: PaymentPreimage) -> Self {
+		wrapper.inner
+	}
+}
+
+impl std::str::FromStr for PaymentPreimage {
+	type Err = Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Self::from_hex(s)
+	}
+}
+*/
+/*
 impl UniffiCustomTypeConverter for PaymentPreimage {
 	type Builtin = String;
 
@@ -223,7 +400,7 @@ impl UniffiCustomTypeConverter for PaymentPreimage {
 		hex_utils::to_string(&obj.0)
 	}
 }
-
+*/
 impl UniffiCustomTypeConverter for PaymentSecret {
 	type Builtin = String;
 

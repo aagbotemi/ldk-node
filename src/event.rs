@@ -989,10 +989,12 @@ where
 						hex_utils::to_string(&payment_preimage.0)
 					);
 				});
+				let payment_preimage_wrapper = PaymentPreimage::from(payment_preimage);
+
 				let event = Event::PaymentSuccessful {
 					payment_id: Some(payment_id),
 					payment_hash,
-					payment_preimage: Some(payment_preimage),
+					payment_preimage: Some(payment_preimage_wrapper),
 					fee_paid_msat,
 				};
 

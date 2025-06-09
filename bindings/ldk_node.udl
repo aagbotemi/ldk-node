@@ -212,11 +212,28 @@ interface SpontaneousPayment {
 	[Throws=NodeError]
 	PaymentId send_with_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs);
 	[Throws=NodeError]
+    PaymentId send_with_preimage(
+        u64 amount_msat, 
+        PublicKey node_id, 
+        PaymentPreimage preimage,
+        SendingParameters? sending_parameters
+    );
+    [Throws=NodeError]
+    PaymentId send_with_preimage_and_custom_tlvs(
+        u64 amount_msat, 
+        PublicKey node_id, 
+        PaymentPreimage preimage,
+        sequence<CustomTlvRecord> custom_tlvs, 
+        SendingParameters? sending_parameters
+    );
+	[Throws=NodeError]
 	void send_probes(u64 amount_msat, PublicKey node_id);
-	[Throws=NodeError]
-	PaymentId send_with_preimage(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, PaymentPreimage preimage);
-	[Throws=NodeError]
-	PaymentId send_with_preimage_and_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs, PaymentPreimage preimage);
+};
+
+interface PaymentPreimage {
+    [Throws=NodeError, Name=from_hex]
+    constructor(string hex_str);
+    string to_hex();
 };
 
 interface OnchainPayment {
@@ -359,7 +376,12 @@ enum VssHeaderProviderError {
 
 [Enum]
 interface Event {
-	PaymentSuccessful(PaymentId? payment_id, PaymentHash payment_hash, PaymentPreimage? payment_preimage, u64? fee_paid_msat);
+	PaymentSuccessful(
+        PaymentId? payment_id, 
+        PaymentHash payment_hash, 
+        string? payment_preimage,
+        u64? fee_paid_msat
+    );
 	PaymentFailed(PaymentId? payment_id, PaymentHash? payment_hash, PaymentFailureReason? reason);
 	PaymentReceived(PaymentId? payment_id, PaymentHash payment_hash, u64 amount_msat, sequence<CustomTlvRecord> custom_records);
 	PaymentClaimable(PaymentId payment_id, PaymentHash payment_hash, u64 claimable_amount_msat, u32? claim_deadline, sequence<CustomTlvRecord> custom_records);
@@ -600,7 +622,7 @@ interface LightningBalance {
 		u64 amount_satoshis,
 		u32 timeout_height,
 		PaymentHash payment_hash,
-		PaymentPreimage payment_preimage
+		string payment_preimage
 	);
 	MaybeTimeoutClaimableHTLC (
 		ChannelId channel_id,
@@ -775,9 +797,6 @@ typedef string PaymentId;
 
 [Custom]
 typedef string PaymentHash;
-
-[Custom]
-typedef string PaymentPreimage;
 
 [Custom]
 typedef string PaymentSecret;

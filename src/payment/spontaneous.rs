@@ -70,16 +70,16 @@ impl SpontaneousPayment {
 
 	/// Send a spontaneous payment with custom preimage
 	pub fn send_with_preimage(
-		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		preimage: PaymentPreimage,
+		&self, amount_msat: u64, node_id: PublicKey, preimage: PaymentPreimage,
+		sending_parameters: Option<SendingParameters>,
 	) -> Result<PaymentId, Error> {
 		self.send_inner(amount_msat, node_id, sending_parameters, None, Some(preimage))
 	}
 
 	/// Send a spontaneous payment with custom preimage including a list of custom TLVs.
 	pub fn send_with_preimage_and_custom_tlvs(
-		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
-		custom_tlvs: Vec<CustomTlvRecord>, preimage: PaymentPreimage,
+		&self, amount_msat: u64, node_id: PublicKey, preimage: PaymentPreimage,
+		custom_tlvs: Vec<CustomTlvRecord>, sending_parameters: Option<SendingParameters>,
 	) -> Result<PaymentId, Error> {
 		self.send_inner(amount_msat, node_id, sending_parameters, Some(custom_tlvs), Some(preimage))
 	}
