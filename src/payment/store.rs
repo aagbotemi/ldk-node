@@ -15,7 +15,7 @@ use lightning::{
 	impl_writeable_tlv_based_enum, write_tlv_fields,
 };
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage, PaymentSecret};
+use lightning_types::payment::{PaymentHash, PaymentSecret};
 
 use bitcoin::{BlockHash, Txid};
 
@@ -23,6 +23,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::data_store::{StorableObject, StorableObjectId, StorableObjectUpdate};
 use crate::hex_utils;
+use crate::payment::PaymentPreimage;
 
 /// Represents a payment.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,17 +64,42 @@ impl PaymentDetails {
 	}
 }
 
+// impl Writeable for PaymentDetails {
+// 	fn write<W: lightning::util::ser::Writer>(
+// 		&self, writer: &mut W,
+// 	) -> Result<(), lightning::io::Error> {
+// 		#[cfg(feature = "uniffi")]
+// 		let preimage = self.kind.preimage().map(|p| p.into_inner().unwrap());
+// 		#[cfg(not(feature = "uniffi"))]
+// 		let preimage = self.kind.preimage();
+
+// 		write_tlv_fields!(writer, {
+// 			(0, self.id, required), // Used to be `hash` for v0.2.1 and prior
+// 			// 1 briefly used to be lsp_fee_limits, could probably be reused at some point in the future.
+// 			// 2 used to be `preimage` before it was moved to `kind` in v0.3.0
+// 			(2, preimage, required),
+// 			(3, self.kind, required),
+// 			// 4 used to be `secret` before it was moved to `kind` in v0.3.0
+// 			(4, None::<Option<PaymentSecret>>, required),
+// 			(5, self.latest_update_timestamp, required),
+// 			(6, self.amount_msat, required),
+// 			(7, self.fee_paid_msat, option),
+// 			(8, self.direction, required),
+// 			(10, self.status, required)
+// 		});
+// 		Ok(())
+// 	}
+// }
+// src/payment/store.rs
+
 impl Writeable for PaymentDetails {
 	fn write<W: lightning::util::ser::Writer>(
 		&self, writer: &mut W,
 	) -> Result<(), lightning::io::Error> {
 		write_tlv_fields!(writer, {
-			(0, self.id, required), // Used to be `hash` for v0.2.1 and prior
-			// 1 briefly used to be lsp_fee_limits, could probably be reused at some point in the future.
-			// 2 used to be `preimage` before it was moved to `kind` in v0.3.0
+			(0, self.id, required),
 			(2, None::<Option<PaymentPreimage>>, required),
 			(3, self.kind, required),
-			// 4 used to be `secret` before it was moved to `kind` in v0.3.0
 			(4, None::<Option<PaymentSecret>>, required),
 			(5, self.latest_update_timestamp, required),
 			(6, self.amount_msat, required),
@@ -84,6 +110,87 @@ impl Writeable for PaymentDetails {
 		Ok(())
 	}
 }
+
+// impl Readable for PaymentDetails {
+// 	fn read<R: lightning::io::Read>(reader: &mut R) -> Result<PaymentDetails, DecodeError> {
+// 		let unix_time_secs = SystemTime::now()
+// 			.duration_since(UNIX_EPOCH)
+// 			.unwrap_or(Duration::from_secs(0))
+// 			.as_secs();
+// 		_init_and_read_len_prefixed_tlv_fields!(reader, {
+// 			(0, id, required), // Used to be `hash`
+// 			(1, lsp_fee_limits, option),
+// 			(2, preimage, required),
+// 			(3, kind_opt, option),
+// 			(4, secret, required),
+// 			(5, latest_update_timestamp, (default_value, unix_time_secs)),
+// 			(6, amount_msat, required),
+// 			(7, fee_paid_msat, option),
+// 			(8, direction, required),
+// 			(10, status, required)
+// 		});
+
+// 		let id: PaymentId = id.0.ok_or(DecodeError::InvalidValue)?;
+// 		#[cfg(feature = "uniffi")]
+// 		let preimage: Option<PaymentPreimage> = preimage
+// 			.0
+// 			.ok_or(DecodeError::InvalidValue)?
+// 			.map(|p: lightning_types::payment::PaymentPreimage| PaymentPreimage::from_inner(p));
+// 		#[cfg(not(feature = "uniffi"))]
+// 		let preimage: Option<PaymentPreimage> = preimage.0.ok_or(DecodeError::InvalidValue)?;
+
+// 		let secret: Option<PaymentSecret> = secret.0.ok_or(DecodeError::InvalidValue)?;
+// 		let latest_update_timestamp: u64 =
+// 			latest_update_timestamp.0.ok_or(DecodeError::InvalidValue)?;
+// 		let amount_msat: Option<u64> = amount_msat.0.ok_or(DecodeError::InvalidValue)?;
+// 		let direction: PaymentDirection = direction.0.ok_or(DecodeError::InvalidValue)?;
+// 		let status: PaymentStatus = status.0.ok_or(DecodeError::InvalidValue)?;
+
+// 		let kind = if let Some(kind) = kind_opt {
+// 			// If we serialized the payment kind, use it.
+// 			// This will always be the case for any version after v0.2.1.
+// 			kind
+// 		} else {
+// 			// Otherwise we persisted with v0.2.1 or before, and puzzle together the kind from the
+// 			// provided fields.
+
+// 			// We used to track everything by hash, but switched to track everything by id
+// 			// post-v0.2.1. As both are serialized identically, we just switched the `0`-type field above
+// 			// from `PaymentHash` to `PaymentId` and serialize a separate `PaymentHash` in
+// 			// `PaymentKind` when needed. Here, for backwards compat, we can just re-create the
+// 			// `PaymentHash` from the id, as 'back then' `payment_hash == payment_id` was always
+// 			// true.
+// 			let hash = PaymentHash(id.0);
+
+// 			if secret.is_some() {
+// 				if let Some(lsp_fee_limits) = lsp_fee_limits {
+// 					let counterparty_skimmed_fee_msat = None;
+// 					PaymentKind::Bolt11Jit {
+// 						hash,
+// 						preimage,
+// 						secret,
+// 						counterparty_skimmed_fee_msat,
+// 						lsp_fee_limits,
+// 					}
+// 				} else {
+// 					PaymentKind::Bolt11 { hash, preimage, secret }
+// 				}
+// 			} else {
+// 				PaymentKind::Spontaneous { hash, preimage }
+// 			}
+// 		};
+
+// 		Ok(PaymentDetails {
+// 			id,
+// 			kind,
+// 			amount_msat,
+// 			fee_paid_msat,
+// 			direction,
+// 			status,
+// 			latest_update_timestamp,
+// 		})
+// 	}
+// }
 
 impl Readable for PaymentDetails {
 	fn read<R: lightning::io::Read>(reader: &mut R) -> Result<PaymentDetails, DecodeError> {
@@ -104,29 +211,20 @@ impl Readable for PaymentDetails {
 			(10, status, required)
 		});
 
+		// Rest of the implementation remains the same
+		// let id = id.ok_or(DecodeError::InvalidValue)?;
 		let id: PaymentId = id.0.ok_or(DecodeError::InvalidValue)?;
-		let preimage: Option<PaymentPreimage> = preimage.0.ok_or(DecodeError::InvalidValue)?;
+		let preimage = preimage.0.ok_or(DecodeError::InvalidValue)?;
+		// let preimage = preimage.ok_or(DecodeError::InvalidValue)?;
 		let secret: Option<PaymentSecret> = secret.0.ok_or(DecodeError::InvalidValue)?;
-		let latest_update_timestamp: u64 =
-			latest_update_timestamp.0.ok_or(DecodeError::InvalidValue)?;
-		let amount_msat: Option<u64> = amount_msat.0.ok_or(DecodeError::InvalidValue)?;
-		let direction: PaymentDirection = direction.0.ok_or(DecodeError::InvalidValue)?;
-		let status: PaymentStatus = status.0.ok_or(DecodeError::InvalidValue)?;
+		let latest_update_timestamp = latest_update_timestamp.0.ok_or(DecodeError::InvalidValue)?;
+		let amount_msat = amount_msat.0.ok_or(DecodeError::InvalidValue)?;
+		let direction = direction.0.ok_or(DecodeError::InvalidValue)?;
+		let status = status.0.ok_or(DecodeError::InvalidValue)?;
 
 		let kind = if let Some(kind) = kind_opt {
-			// If we serialized the payment kind, use it.
-			// This will always be the case for any version after v0.2.1.
 			kind
 		} else {
-			// Otherwise we persisted with v0.2.1 or before, and puzzle together the kind from the
-			// provided fields.
-
-			// We used to track everything by hash, but switched to track everything by id
-			// post-v0.2.1. As both are serialized identically, we just switched the `0`-type field above
-			// from `PaymentHash` to `PaymentId` and serialize a separate `PaymentHash` in
-			// `PaymentKind` when needed. Here, for backwards compat, we can just re-create the
-			// `PaymentHash` from the id, as 'back then' `payment_hash == payment_id` was always
-			// true.
 			let hash = PaymentHash(id.0);
 
 			if secret.is_some() {
@@ -221,40 +319,40 @@ impl StorableObject for PaymentDetails {
 				},
 			}
 		}
-		if let Some(preimage_opt) = update.preimage {
+		if let Some(preimage_opt) = &update.preimage {
 			match self.kind {
 				PaymentKind::Bolt11 { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt11Jit { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt12Offer { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Bolt12Refund { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				PaymentKind::Spontaneous { ref mut preimage, .. } => {
-					update_if_necessary!(*preimage, preimage_opt)
+					update_if_necessary!(*preimage, preimage_opt.clone())
 				},
 				_ => {},
 			}
 		}
 
-		if let Some(secret_opt) = update.secret {
+		if let Some(secret_opt) = &update.secret {
 			match self.kind {
 				PaymentKind::Bolt11 { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt11Jit { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt12Offer { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				PaymentKind::Bolt12Refund { ref mut secret, .. } => {
-					update_if_necessary!(*secret, secret_opt)
+					update_if_necessary!(*secret, *secret_opt)
 				},
 				_ => {},
 			}
@@ -563,13 +661,17 @@ impl PaymentDetailsUpdate {
 
 impl From<&PaymentDetails> for PaymentDetailsUpdate {
 	fn from(value: &PaymentDetails) -> Self {
-		let (hash, preimage, secret) = match value.kind {
+		let (hash, preimage, secret) = match &value.kind {
 			PaymentKind::Bolt11 { hash, preimage, secret, .. } => (Some(hash), preimage, secret),
 			PaymentKind::Bolt11Jit { hash, preimage, secret, .. } => (Some(hash), preimage, secret),
-			PaymentKind::Bolt12Offer { hash, preimage, secret, .. } => (hash, preimage, secret),
-			PaymentKind::Bolt12Refund { hash, preimage, secret, .. } => (hash, preimage, secret),
-			PaymentKind::Spontaneous { hash, preimage, .. } => (Some(hash), preimage, None),
-			_ => (None, None, None),
+			PaymentKind::Bolt12Offer { hash, preimage, secret, .. } => {
+				(hash.as_ref(), preimage, secret)
+			},
+			PaymentKind::Bolt12Refund { hash, preimage, secret, .. } => {
+				(hash.as_ref(), preimage, secret)
+			},
+			PaymentKind::Spontaneous { hash, preimage, .. } => (Some(hash), preimage, &None),
+			_ => (None, &None, &None),
 		};
 
 		let confirmation_status = match value.kind {
@@ -586,9 +688,9 @@ impl From<&PaymentDetails> for PaymentDetailsUpdate {
 
 		Self {
 			id: value.id,
-			hash: Some(hash),
-			preimage: Some(preimage),
-			secret: Some(secret),
+			hash: Some(hash.copied()),
+			preimage: Some(preimage.clone()),
+			secret: Some(*secret),
 			amount_msat: Some(value.amount_msat),
 			fee_paid_msat: Some(value.fee_paid_msat),
 			counterparty_skimmed_fee_msat,
@@ -608,8 +710,26 @@ impl StorableObjectUpdate<PaymentDetails> for PaymentDetailsUpdate {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::ffi::maybe_unwrap_option;
 	use bitcoin::io::Cursor;
 	use lightning::util::ser::Readable;
+	use lightning_types::payment::PaymentPreimage as LdkPaymentPreimage;
+
+	// use crate::lightning_types::payment::PaymentPreimage;
+
+	#[cfg(feature = "uniffi")]
+	fn maybe_to_ffi(
+		preimage: Option<lightning_types::payment::PaymentPreimage>,
+	) -> Option<crate::ffi::PaymentPreimage> {
+		preimage.map(|pi| crate::ffi::PaymentPreimage::from(pi))
+	}
+
+	#[cfg(not(feature = "uniffi"))]
+	fn maybe_to_ffi(
+		preimage: Option<lightning_types::payment::PaymentPreimage>,
+	) -> Option<lightning_types::payment::PaymentPreimage> {
+		preimage
+	}
 
 	/// We refactored `PaymentDetails` to hold a payment id and moved some required fields into
 	/// `PaymentKind`. Here, we keep the old layout available in order test de/ser compatibility.
@@ -639,7 +759,7 @@ mod tests {
 		// We refactored `PaymentDetails` to hold a payment id and moved some required fields into
 		// `PaymentKind`. Here, we test compatibility with the old layout.
 		let hash = PaymentHash([42u8; 32]);
-		let preimage = Some(PaymentPreimage([43u8; 32]));
+		let preimage = Some(LdkPaymentPreimage([43u8; 32]));
 		let secret = Some(PaymentSecret([44u8; 32]));
 		let amount_msat = Some(45_000_000);
 
@@ -647,7 +767,7 @@ mod tests {
 		{
 			let old_bolt11_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: maybe_to_ffi(preimage),
 				secret,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -672,7 +792,9 @@ mod tests {
 			match bolt11_decoded.kind {
 				PaymentKind::Bolt11 { hash: h, preimage: p, secret: s } => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					// let inner: Option<PaymentPreimage> = maybe_extract_inner!(p);
+					// assert_eq!(preimage, inner);
+					assert_eq!(maybe_to_ffi(preimage), p);
 					assert_eq!(secret, s);
 				},
 				_ => {
@@ -690,7 +812,7 @@ mod tests {
 
 			let old_bolt11_jit_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: maybe_to_ffi(preimage),
 				secret,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -721,7 +843,9 @@ mod tests {
 					lsp_fee_limits: l,
 				} => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					// let inner: Option<PaymentPreimage> = maybe_extract_inner!(p);
+					// assert_eq!(preimage, inner);
+					assert_eq!(maybe_to_ffi(preimage), p);
 					assert_eq!(secret, s);
 					assert_eq!(None, c);
 					assert_eq!(lsp_fee_limits, Some(l));
@@ -736,7 +860,7 @@ mod tests {
 		{
 			let old_spontaneous_payment = OldPaymentDetails {
 				hash,
-				preimage,
+				preimage: maybe_to_ffi(preimage),
 				secret: None,
 				amount_msat,
 				direction: PaymentDirection::Inbound,
@@ -761,7 +885,10 @@ mod tests {
 			match spontaneous_decoded.kind {
 				PaymentKind::Spontaneous { hash: h, preimage: p } => {
 					assert_eq!(hash, h);
-					assert_eq!(preimage, p);
+					// let inner: Option<PaymentPreimage> = maybe_extract_inner!(p);
+					// assert_eq!(preimage, inner);
+					// Ok(())
+					assert_eq!(maybe_to_ffi(preimage), p);
 				},
 				_ => {
 					panic!("Unexpected kind!");

@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
+use crate::ffi::maybe_wrap;
+use crate::payment::PaymentPreimage;
 use crate::sweep::value_from_descriptor;
 
 use lightning::chain::channelmonitor::Balance as LdkBalance;
@@ -12,7 +14,7 @@ use lightning::chain::channelmonitor::BalanceSource;
 use lightning::ln::types::ChannelId;
 use lightning::util::sweep::{OutputSpendStatus, TrackedSpendableOutput};
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage};
+use lightning_types::payment::PaymentHash;
 
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{BlockHash, Txid};
@@ -263,7 +265,7 @@ impl LightningBalance {
 				amount_satoshis,
 				timeout_height,
 				payment_hash,
-				payment_preimage,
+				payment_preimage: maybe_wrap(payment_preimage),
 			},
 			LdkBalance::MaybeTimeoutClaimableHTLC {
 				amount_satoshis,

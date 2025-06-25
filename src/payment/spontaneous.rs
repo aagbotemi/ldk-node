@@ -9,16 +9,19 @@
 
 use crate::config::{Config, LDK_PAYMENT_RETRY_TIMEOUT};
 use crate::error::Error;
+use crate::ffi::maybe_wrap;
 use crate::logger::{log_error, log_info, LdkLogger, Logger};
+use crate::maybe_extract_inner;
 use crate::payment::store::{PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus};
-use crate::payment::SendingParameters;
+use crate::payment::{PaymentPreimage, SendingParameters};
 use crate::types::{ChannelManager, CustomTlvRecord, KeysManager, PaymentStore};
 
 use lightning::ln::channelmanager::{PaymentId, RecipientOnionFields, Retry, RetryableSendFailure};
 use lightning::routing::router::{PaymentParameters, RouteParameters};
 use lightning::sign::EntropySource;
+use lightning::types::payment::PaymentPreimage as LdkPaymentPreimage;
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage};
+use lightning_types::payment::PaymentHash;
 
 use bitcoin::secp256k1::PublicKey;
 
@@ -73,6 +76,7 @@ impl SpontaneousPayment {
 		&self, amount_msat: u64, node_id: PublicKey, sending_parameters: Option<SendingParameters>,
 		preimage: PaymentPreimage,
 	) -> Result<PaymentId, Error> {
+		// let preimage = convert_preimage(Some(preimage));
 		self.send_inner(amount_msat, node_id, sending_parameters, None, Some(preimage))
 	}
 
@@ -93,8 +97,11 @@ impl SpontaneousPayment {
 			return Err(Error::NotRunning);
 		}
 
-		let payment_preimage = preimage
-			.unwrap_or_else(|| PaymentPreimage(self.keys_manager.get_secure_random_bytes()));
+		let payment_preimage = if let Some(payment_preimage) = preimage {
+			maybe_extract_inner!(payment_preimage)
+		} else {
+			LdkPaymentPreimage(self.keys_manager.get_secure_random_bytes())
+		};
 		let payment_hash = PaymentHash::from(payment_preimage);
 		let payment_id = PaymentId(payment_hash.0);
 
@@ -137,8 +144,19 @@ impl SpontaneousPayment {
 			None => RecipientOnionFields::spontaneous_empty(),
 		};
 
+		let ldk_preimage = {
+			#[cfg(feature = "uniffi")]
+			{
+				payment_preimage.into()
+			}
+			#[cfg(not(feature = "uniffi"))]
+			{
+				payment_preimage
+			}
+		};
+
 		match self.channel_manager.send_spontaneous_payment(
-			Some(payment_preimage),
+			Some(ldk_preimage),
 			recipient_fields,
 			PaymentId(payment_hash.0),
 			route_params,
@@ -149,7 +167,7 @@ impl SpontaneousPayment {
 
 				let kind = PaymentKind::Spontaneous {
 					hash: payment_hash,
-					preimage: Some(payment_preimage),
+					preimage: Some(maybe_wrap(payment_preimage)),
 				};
 				let payment = PaymentDetails::new(
 					payment_id,
@@ -171,7 +189,7 @@ impl SpontaneousPayment {
 					_ => {
 						let kind = PaymentKind::Spontaneous {
 							hash: payment_hash,
-							preimage: Some(payment_preimage),
+							preimage: Some(maybe_wrap(payment_preimage)),
 						};
 						let payment = PaymentDetails::new(
 							payment_id,

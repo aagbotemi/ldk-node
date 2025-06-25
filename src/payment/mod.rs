@@ -23,6 +23,11 @@ pub use store::{
 };
 pub use unified_qr::{QrPaymentResult, UnifiedQrPayment};
 
+#[cfg(not(feature = "uniffi"))]
+pub(crate) type PaymentPreimage = lightning::types::payment::PaymentPreimage;
+#[cfg(feature = "uniffi")]
+pub(crate) type PaymentPreimage = crate::ffi::PaymentPreimage;
+
 /// Represents information used to send a payment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SendingParameters {

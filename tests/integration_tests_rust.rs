@@ -811,7 +811,7 @@ fn simple_bolt12_send_receive() {
 	let node_a_payments =
 		node_a.list_payments_with_filter(|p| matches!(p.kind, PaymentKind::Bolt12Offer { .. }));
 	assert_eq!(node_a_payments.len(), 1);
-	match node_a_payments.first().unwrap().kind {
+	match &node_a_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Offer {
 			hash,
 			preimage,
@@ -822,7 +822,7 @@ fn simple_bolt12_send_receive() {
 		} => {
 			assert!(hash.is_some());
 			assert!(preimage.is_some());
-			assert_eq!(offer_id, offer.id());
+			assert_eq!(offer_id, &offer.id());
 			assert_eq!(&expected_quantity, qty);
 			assert_eq!(expected_payer_note.unwrap(), note.clone().unwrap().0);
 			//TODO: We should eventually set and assert the secret sender-side, too, but the BOLT12
@@ -838,12 +838,12 @@ fn simple_bolt12_send_receive() {
 	let node_b_payments =
 		node_b.list_payments_with_filter(|p| matches!(p.kind, PaymentKind::Bolt12Offer { .. }));
 	assert_eq!(node_b_payments.len(), 1);
-	match node_b_payments.first().unwrap().kind {
+	match &node_b_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Offer { hash, preimage, secret, offer_id, .. } => {
 			assert!(hash.is_some());
 			assert!(preimage.is_some());
 			assert!(secret.is_some());
-			assert_eq!(offer_id, offer.id());
+			assert_eq!(offer_id, &offer.id());
 		},
 		_ => {
 			panic!("Unexpected payment kind");
@@ -877,7 +877,7 @@ fn simple_bolt12_send_receive() {
 		matches!(p.kind, PaymentKind::Bolt12Offer { .. }) && p.id == payment_id
 	});
 	assert_eq!(node_a_payments.len(), 1);
-	let payment_hash = match node_a_payments.first().unwrap().kind {
+	let payment_hash = match &node_a_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Offer {
 			hash,
 			preimage,
@@ -888,7 +888,7 @@ fn simple_bolt12_send_receive() {
 		} => {
 			assert!(hash.is_some());
 			assert!(preimage.is_some());
-			assert_eq!(offer_id, offer.id());
+			assert_eq!(offer_id, &offer.id());
 			assert_eq!(&expected_quantity, qty);
 			assert_eq!(expected_payer_note.unwrap(), note.clone().unwrap().0);
 			//TODO: We should eventually set and assert the secret sender-side, too, but the BOLT12
@@ -907,12 +907,12 @@ fn simple_bolt12_send_receive() {
 		matches!(p.kind, PaymentKind::Bolt12Offer { .. }) && p.id == node_b_payment_id
 	});
 	assert_eq!(node_b_payments.len(), 1);
-	match node_b_payments.first().unwrap().kind {
+	match &node_b_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Offer { hash, preimage, secret, offer_id, .. } => {
 			assert!(hash.is_some());
 			assert!(preimage.is_some());
 			assert!(secret.is_some());
-			assert_eq!(offer_id, offer.id());
+			assert_eq!(offer_id, &offer.id());
 		},
 		_ => {
 			panic!("Unexpected payment kind");
@@ -945,7 +945,7 @@ fn simple_bolt12_send_receive() {
 		matches!(p.kind, PaymentKind::Bolt12Refund { .. }) && p.id == node_b_payment_id
 	});
 	assert_eq!(node_b_payments.len(), 1);
-	match node_b_payments.first().unwrap().kind {
+	match &node_b_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Refund {
 			hash,
 			preimage,
@@ -971,7 +971,7 @@ fn simple_bolt12_send_receive() {
 		matches!(p.kind, PaymentKind::Bolt12Refund { .. }) && p.id == node_a_payment_id
 	});
 	assert_eq!(node_a_payments.len(), 1);
-	match node_a_payments.first().unwrap().kind {
+	match &node_a_payments.first().unwrap().kind {
 		PaymentKind::Bolt12Refund { hash, preimage, secret, .. } => {
 			assert!(hash.is_some());
 			assert!(preimage.is_some());
@@ -1415,7 +1415,7 @@ fn spontaneous_send_with_custom_preimage() {
 	let amount_msat = 100_000;
 	let payment_id = node_a
 		.spontaneous_payment()
-		.send_with_preimage(amount_msat, node_b.node_id(), None, custom_preimage.clone())
+		.send_with_preimage(amount_msat, node_b.node_id(), None, custom_preimage.clone().into())
 		.unwrap();
 
 	// check payment status and verify stored preimage
@@ -1424,7 +1424,7 @@ fn spontaneous_send_with_custom_preimage() {
 		node_a.list_payments_with_filter(|p| p.id == payment_id).first().unwrap().clone();
 	assert_eq!(details.status, PaymentStatus::Succeeded);
 	if let PaymentKind::Spontaneous { preimage: Some(pi), .. } = details.kind {
-		assert_eq!(pi.0, custom_bytes);
+		assert_eq!(pi, custom_preimage.into());
 	} else {
 		panic!("Expected a spontaneous PaymentKind with a preimage");
 	}
@@ -1443,8 +1443,8 @@ fn spontaneous_send_with_custom_preimage() {
 	assert_eq!(receiver_details.direction, PaymentDirection::Inbound);
 
 	// Verify receiver also has the same preimage
-	if let PaymentKind::Spontaneous { preimage: Some(pi), .. } = receiver_details.kind {
-		assert_eq!(pi.0, custom_bytes);
+	if let PaymentKind::Spontaneous { preimage: Some(pi), .. } = &receiver_details.kind {
+		assert_eq!(pi, &custom_preimage.into());
 	} else {
 		panic!("Expected receiver to have spontaneous PaymentKind with preimage");
 	}

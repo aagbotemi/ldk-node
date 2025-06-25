@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
+use crate::ffi::maybe_wrap;
 use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
 
 use crate::{
@@ -22,6 +23,7 @@ use crate::logger::Logger;
 use crate::payment::store::{
 	PaymentDetails, PaymentDetailsUpdate, PaymentDirection, PaymentKind, PaymentStatus,
 };
+use crate::payment::PaymentPreimage;
 
 use crate::io::{
 	EVENT_QUEUE_PERSISTENCE_KEY, EVENT_QUEUE_PERSISTENCE_PRIMARY_NAMESPACE,
@@ -39,9 +41,10 @@ use lightning::routing::gossip::NodeId;
 use lightning::util::errors::APIError;
 use lightning::util::ser::{Readable, ReadableArgs, Writeable, Writer};
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage};
+use lightning_types::payment::PaymentHash;
 
 use lightning_liquidity::lsps2::utils::compute_opening_fee;
+use lightning_types::payment::PaymentHash;
 
 use bitcoin::blockdata::locktime::absolute::LockTime;
 use bitcoin::secp256k1::PublicKey;
@@ -740,7 +743,7 @@ where
 						let quantity = payment_context.invoice_request.quantity;
 						let kind = PaymentKind::Bolt12Offer {
 							hash: Some(payment_hash),
-							preimage: payment_preimage,
+							preimage: payment_preimage.map(|preimage| maybe_wrap(preimage)),
 							secret: Some(payment_secret),
 							offer_id,
 							payer_note,
@@ -785,7 +788,7 @@ where
 						// Since it's spontaneous, we insert it now into our store.
 						let kind = PaymentKind::Spontaneous {
 							hash: payment_hash,
-							preimage: Some(preimage),
+							preimage: Some(maybe_wrap(preimage)),
 						};
 
 						let payment = PaymentDetails::new(
@@ -871,7 +874,7 @@ where
 						payment_secret,
 						..
 					} => PaymentDetailsUpdate {
-						preimage: Some(payment_preimage),
+						preimage: Some(payment_preimage.map(|preimage| maybe_wrap(preimage))),
 						secret: Some(Some(payment_secret)),
 						amount_msat: Some(Some(amount_msat)),
 						status: Some(PaymentStatus::Succeeded),
@@ -880,7 +883,7 @@ where
 					PaymentPurpose::Bolt12OfferPayment {
 						payment_preimage, payment_secret, ..
 					} => PaymentDetailsUpdate {
-						preimage: Some(payment_preimage),
+						preimage: Some(payment_preimage.map(|preimage| maybe_wrap(preimage))),
 						secret: Some(Some(payment_secret)),
 						amount_msat: Some(Some(amount_msat)),
 						status: Some(PaymentStatus::Succeeded),
@@ -891,14 +894,14 @@ where
 						payment_secret,
 						..
 					} => PaymentDetailsUpdate {
-						preimage: Some(payment_preimage),
+						preimage: Some(payment_preimage.map(|preimage| maybe_wrap(preimage))),
 						secret: Some(Some(payment_secret)),
 						amount_msat: Some(Some(amount_msat)),
 						status: Some(PaymentStatus::Succeeded),
 						..PaymentDetailsUpdate::new(payment_id)
 					},
 					PaymentPurpose::SpontaneousPayment(preimage) => PaymentDetailsUpdate {
-						preimage: Some(Some(preimage)),
+						preimage: Some(Some(maybe_wrap(preimage))),
 						amount_msat: Some(Some(amount_msat)),
 						status: Some(PaymentStatus::Succeeded),
 						..PaymentDetailsUpdate::new(payment_id)
@@ -960,7 +963,7 @@ where
 
 				let update = PaymentDetailsUpdate {
 					hash: Some(Some(payment_hash)),
-					preimage: Some(Some(payment_preimage)),
+					preimage: Some(Some(maybe_wrap(payment_preimage))),
 					fee_paid_msat: Some(fee_paid_msat),
 					status: Some(PaymentStatus::Succeeded),
 					..PaymentDetailsUpdate::new(payment_id)
@@ -992,7 +995,7 @@ where
 				let event = Event::PaymentSuccessful {
 					payment_id: Some(payment_id),
 					payment_hash,
-					payment_preimage: Some(payment_preimage),
+					payment_preimage: Some(maybe_wrap(payment_preimage)),
 					fee_paid_msat,
 				};
 
@@ -1484,6 +1487,19 @@ where
 		}
 		Ok(())
 	}
+}
+
+pub fn convert_preimage(
+    preimage: Option<lightning_types::payment::PaymentPreimage>,
+) -> Option<PaymentPreimage> {
+    #[cfg(feature = "uniffi")]
+    {
+        preimage.map(PaymentPreimage::from)
+    }
+    #[cfg(not(feature = "uniffi"))]
+    {
+        preimage
+    }
 }
 
 #[cfg(test)]

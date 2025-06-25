@@ -13,13 +13,15 @@ use crate::config::{Config, LDK_PAYMENT_RETRY_TIMEOUT};
 use crate::connection::ConnectionManager;
 use crate::data_store::DataStoreUpdateResult;
 use crate::error::Error;
-use crate::ffi::{maybe_deref, maybe_try_convert_enum, maybe_wrap};
+use crate::ffi::{maybe_deref, maybe_try_convert_enum, maybe_wrap, maybe_wrap_arc};
 use crate::liquidity::LiquiditySource;
 use crate::logger::{log_error, log_info, LdkLogger, Logger};
+use crate::maybe_extract_inner;
 use crate::payment::store::{
 	LSPFeeLimits, PaymentDetails, PaymentDetailsUpdate, PaymentDirection, PaymentKind,
 	PaymentStatus,
 };
+use crate::payment::PaymentPreimage;
 use crate::payment::SendingParameters;
 use crate::peer_store::{PeerInfo, PeerStore};
 use crate::types::{ChannelManager, PaymentStore};
@@ -30,10 +32,11 @@ use lightning::ln::channelmanager::{
 };
 use lightning::routing::router::{PaymentParameters, RouteParameters};
 
-use lightning_types::payment::{PaymentHash, PaymentPreimage};
+use lightning_types::payment::{PaymentHash, PaymentPreimage as LdkPaymentPreimage};
 
 use lightning_invoice::Bolt11Invoice as LdkBolt11Invoice;
 use lightning_invoice::Bolt11InvoiceDescription as LdkBolt11InvoiceDescription;
+use lightning_types::payment::PaymentHash;
 
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
@@ -346,9 +349,21 @@ impl Bolt11Payment {
 	pub fn claim_for_hash(
 		&self, payment_hash: PaymentHash, claimable_amount_msat: u64, preimage: PaymentPreimage,
 	) -> Result<(), Error> {
+		let payment_preimage = {
+			#[cfg(feature = "uniffi")]
+			{
+				preimage.to_vec().expect("Invalid preimage")
+			}
+			#[cfg(not(feature = "uniffi"))]
+			{
+				preimage.0
+			}
+		};
+
 		let payment_id = PaymentId(payment_hash.0);
 
-		let expected_payment_hash = PaymentHash(Sha256::hash(&preimage.0).to_byte_array());
+		let inner: LdkPaymentPreimage = maybe_extract_inner!(preimage.clone());
+		let expected_payment_hash = PaymentHash(Sha256::hash(&inner.0).to_byte_array());
 
 		if expected_payment_hash != payment_hash {
 			log_error!(
@@ -379,7 +394,8 @@ impl Bolt11Payment {
 			return Err(Error::InvalidPaymentHash);
 		}
 
-		self.channel_manager.claim_funds(preimage);
+		let inner: LdkPaymentPreimage = maybe_extract_inner!(preimage);
+		self.channel_manager.claim_funds(inner);
 		Ok(())
 	}
 
@@ -438,7 +454,7 @@ impl Bolt11Payment {
 	) -> Result<Bolt11Invoice, Error> {
 		let description = maybe_try_convert_enum(description)?;
 		let invoice = self.receive_inner(Some(amount_msat), &description, expiry_secs, None)?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	/// Returns a payable invoice that can be used to request a payment of the amount
@@ -462,7 +478,7 @@ impl Bolt11Payment {
 		let description = maybe_try_convert_enum(description)?;
 		let invoice =
 			self.receive_inner(Some(amount_msat), &description, expiry_secs, Some(payment_hash))?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	/// Returns a payable invoice that can be used to request and receive a payment for which the
@@ -474,7 +490,7 @@ impl Bolt11Payment {
 	) -> Result<Bolt11Invoice, Error> {
 		let description = maybe_try_convert_enum(description)?;
 		let invoice = self.receive_inner(None, &description, expiry_secs, None)?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	/// Returns a payable invoice that can be used to request a payment for the given payment hash
@@ -496,7 +512,7 @@ impl Bolt11Payment {
 	) -> Result<Bolt11Invoice, Error> {
 		let description = maybe_try_convert_enum(description)?;
 		let invoice = self.receive_inner(None, &description, expiry_secs, Some(payment_hash))?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	pub(crate) fn receive_inner(
@@ -539,9 +555,10 @@ impl Bolt11Payment {
 		} else {
 			None
 		};
+
 		let kind = PaymentKind::Bolt11 {
 			hash: payment_hash,
-			preimage,
+			preimage: preimage.map(|preimage| maybe_wrap(preimage)),
 			secret: Some(payment_secret.clone()),
 		};
 		let payment = PaymentDetails::new(
@@ -579,7 +596,7 @@ impl Bolt11Payment {
 			max_total_lsp_fee_limit_msat,
 			None,
 		)?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	/// Returns a payable invoice that can be used to request a variable amount payment (also known
@@ -605,7 +622,7 @@ impl Bolt11Payment {
 			None,
 			max_proportional_lsp_fee_limit_ppm_msat,
 		)?;
-		Ok(maybe_wrap(invoice))
+		Ok(maybe_wrap_arc(invoice))
 	}
 
 	fn receive_via_jit_channel_inner(
@@ -677,7 +694,7 @@ impl Bolt11Payment {
 			self.channel_manager.get_payment_preimage(payment_hash, payment_secret.clone()).ok();
 		let kind = PaymentKind::Bolt11Jit {
 			hash: payment_hash,
-			preimage,
+			preimage: preimage.map(|preimage| maybe_wrap(preimage)),
 			secret: Some(payment_secret.clone()),
 			counterparty_skimmed_fee_msat: None,
 			lsp_fee_limits,

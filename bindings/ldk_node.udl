@@ -219,6 +219,11 @@ interface SpontaneousPayment {
 	PaymentId send_with_preimage_and_custom_tlvs(u64 amount_msat, PublicKey node_id, SendingParameters? sending_parameters, sequence<CustomTlvRecord> custom_tlvs, PaymentPreimage preimage);
 };
 
+interface PaymentPreimage {
+    [Throws=NodeError, Name=from_str]
+	constructor([ByRef] string preimage_str);
+};
+
 interface OnchainPayment {
 	[Throws=NodeError]
 	Address new_address();
@@ -832,9 +837,6 @@ typedef string PaymentId;
 
 [Custom]
 typedef string PaymentHash;
-
-[Custom]
-typedef string PaymentPreimage;
 
 [Custom]
 typedef string PaymentSecret;
