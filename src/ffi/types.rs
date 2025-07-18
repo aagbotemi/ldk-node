@@ -708,18 +708,699 @@ impl FromStr for PaymentPreimage {
 	}
 }
 
-impl Writeable for PaymentPreimage {
-	fn write<W: lightning::util::ser::Writer>(
-		&self, writer: &mut W,
-	) -> Result<(), lightning::io::Error> {
-		let ldk_preimage = LdkPaymentPreimage::try_from(self.clone()).map_err(|_| {
-			lightning::io::Error::new(
-				lightning::io::ErrorKind::InvalidData,
-				"Invalid payment preimage",
-			)
-		})?;
+use crate::balance::LightningBalance as LdkLightningBalance;
+use crate::payment::store::PaymentKind as LdkPaymentKind;
+use lightning::chain::channelmonitor::Balance as LdkBalance;
 
-		ldk_preimage.0.write(writer)
+#[derive(Debug, Clone, PartialEq, Eq, Object)]
+pub struct LightningBalance {
+	pub(crate) inner: LdkLightningBalance,
+}
+
+impl LightningBalance {
+	/// Creates a new `LightningBalance` from an `LdkBalance`, `channel_id`, and `counterparty_node_id`.
+	pub fn from_ldk_balance(
+		channel_id: ChannelId, counterparty_node_id: PublicKey, balance: LdkBalance,
+	) -> Self {
+		LightningBalance {
+			inner: LdkLightningBalance::from_ldk_balance(channel_id, counterparty_node_id, balance),
+		}
+	}
+
+	/// Returns the variant name of the balance.
+	pub fn variant(&self) -> String {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { .. } => {
+				"ClaimableOnChannelClose".to_string()
+			},
+			LdkLightningBalance::ClaimableAwaitingConfirmations { .. } => {
+				"ClaimableAwaitingConfirmations".to_string()
+			},
+			LdkLightningBalance::ContentiousClaimable { .. } => "ContentiousClaimable".to_string(),
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { .. } => {
+				"MaybeTimeoutClaimableHTLC".to_string()
+			},
+			LdkLightningBalance::MaybePreimageClaimableHTLC { .. } => {
+				"MaybePreimageClaimableHTLC".to_string()
+			},
+			LdkLightningBalance::CounterpartyRevokedOutputClaimable { .. } => {
+				"CounterpartyRevokedOutputClaimable".to_string()
+			},
+		}
+	}
+
+	/// Returns the channel ID associated with the balance, if applicable.
+	pub fn channel_id(&self) -> Option<Vec<u8>> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+			LdkLightningBalance::ClaimableAwaitingConfirmations { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+			LdkLightningBalance::ContentiousClaimable { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+			LdkLightningBalance::MaybePreimageClaimableHTLC { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+			LdkLightningBalance::CounterpartyRevokedOutputClaimable { channel_id, .. } => {
+				Some(channel_id.0.to_vec())
+			},
+		}
+	}
+
+	/// Returns the counterparty node ID associated with the balance, if applicable.
+	pub fn counterparty_node_id(&self) -> Option<PublicKey> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { counterparty_node_id, .. } => {
+				Some(*counterparty_node_id)
+			},
+			LdkLightningBalance::ClaimableAwaitingConfirmations {
+				counterparty_node_id, ..
+			} => Some(*counterparty_node_id),
+			LdkLightningBalance::ContentiousClaimable { counterparty_node_id, .. } => {
+				Some(*counterparty_node_id)
+			},
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { counterparty_node_id, .. } => {
+				Some(*counterparty_node_id)
+			},
+			LdkLightningBalance::MaybePreimageClaimableHTLC { counterparty_node_id, .. } => {
+				Some(*counterparty_node_id)
+			},
+			LdkLightningBalance::CounterpartyRevokedOutputClaimable {
+				counterparty_node_id,
+				..
+			} => Some(*counterparty_node_id),
+		}
+	}
+
+	/// Returns the amount in satoshis associated with the balance, if applicable.
+	pub fn amount_satoshis(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { amount_satoshis, .. } => {
+				Some(*amount_satoshis)
+			},
+			LdkLightningBalance::ClaimableAwaitingConfirmations { amount_satoshis, .. } => {
+				Some(*amount_satoshis)
+			},
+			LdkLightningBalance::ContentiousClaimable { amount_satoshis, .. } => {
+				Some(*amount_satoshis)
+			},
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { amount_satoshis, .. } => {
+				Some(*amount_satoshis)
+			},
+			LdkLightningBalance::MaybePreimageClaimableHTLC { amount_satoshis, .. } => {
+				Some(*amount_satoshis)
+			},
+			LdkLightningBalance::CounterpartyRevokedOutputClaimable { amount_satoshis } => {
+				Some(*amount_satoshis)
+			},
+		}
+	}
+
+	/// Returns the transaction fee in satoshis for the closing commitment transaction, if applicable.
+	pub fn transaction_fee_satoshis(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { transaction_fee_satoshis, .. } => {
+				Some(*transaction_fee_satoshis)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the outbound payment HTLC rounded millisatoshis, if applicable.
+	pub fn outbound_payment_htlc_rounded_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose {
+				outbound_payment_htlc_rounded_msat,
+				..
+			} => Some(*outbound_payment_htlc_rounded_msat),
+			_ => None,
+		}
+	}
+
+	/// Returns the outbound forwarded HTLC rounded millisatoshis, if applicable.
+	pub fn outbound_forwarded_htlc_rounded_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose {
+				outbound_forwarded_htlc_rounded_msat,
+				..
+			} => Some(*outbound_forwarded_htlc_rounded_msat),
+			_ => None,
+		}
+	}
+
+	/// Returns the inbound claiming HTLC rounded millisatoshis, if applicable.
+	pub fn inbound_claiming_htlc_rounded_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose {
+				inbound_claiming_htlc_rounded_msat,
+				..
+			} => Some(*inbound_claiming_htlc_rounded_msat),
+			_ => None,
+		}
+	}
+
+	/// Returns the inbound HTLC rounded millisatoshis, if applicable.
+	pub fn inbound_htlc_rounded_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableOnChannelClose { inbound_htlc_rounded_msat, .. } => {
+				Some(*inbound_htlc_rounded_msat)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the confirmation height for balances awaiting confirmations, if applicable.
+	pub fn confirmation_height(&self) -> Option<u32> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableAwaitingConfirmations { confirmation_height, .. } => {
+				Some(*confirmation_height)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the source of the balance, if applicable.
+	pub fn source(&self) -> Option<BalanceSource> {
+		match &self.inner {
+			LdkLightningBalance::ClaimableAwaitingConfirmations { source, .. } => Some(*source),
+			_ => None,
+		}
+	}
+
+	/// Returns the timeout height for contentious balances, if applicable.
+	pub fn timeout_height(&self) -> Option<u32> {
+		match &self.inner {
+			LdkLightningBalance::ContentiousClaimable { timeout_height, .. } => {
+				Some(*timeout_height)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the payment hash for contentious or HTLC balances, if applicable.
+	pub fn payment_hash(&self) -> Option<PaymentHash> {
+		match &self.inner {
+			LdkLightningBalance::ContentiousClaimable { payment_hash, .. } => Some(*payment_hash),
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { payment_hash, .. } => {
+				Some(*payment_hash)
+			},
+			LdkLightningBalance::MaybePreimageClaimableHTLC { payment_hash, .. } => {
+				Some(*payment_hash)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the payment preimage for contentious balances, if applicable.
+	pub fn payment_preimage(&self) -> Option<PaymentPreimage> {
+		match &self.inner {
+			LdkLightningBalance::ContentiousClaimable { payment_preimage, .. } => {
+				Some(payment_preimage.clone())
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the claimable height for timeout-claimable HTLCs, if applicable.
+	pub fn claimable_height(&self) -> Option<u32> {
+		match &self.inner {
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { claimable_height, .. } => {
+				Some(*claimable_height)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns whether the HTLC is an outbound payment, if applicable.
+	pub fn outbound_payment(&self) -> Option<bool> {
+		match &self.inner {
+			LdkLightningBalance::MaybeTimeoutClaimableHTLC { outbound_payment, .. } => {
+				Some(*outbound_payment)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the expiry height for preimage-claimable HTLCs, if applicable.
+	pub fn expiry_height(&self) -> Option<u32> {
+		match &self.inner {
+			LdkLightningBalance::MaybePreimageClaimableHTLC { expiry_height, .. } => {
+				Some(*expiry_height)
+			},
+			_ => None,
+		}
+	}
+}
+
+impl From<LdkLightningBalance> for LightningBalance {
+	fn from(balance: LdkLightningBalance) -> Self {
+		LightningBalance { inner: balance }
+	}
+}
+
+impl std::ops::Deref for LightningBalance {
+	type Target = LdkLightningBalance;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl AsRef<LdkLightningBalance> for LightningBalance {
+	fn as_ref(&self) -> &LdkLightningBalance {
+		self.deref()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Object)]
+pub struct PaymentKind {
+	pub(crate) inner: LdkPaymentKind,
+}
+
+impl PaymentKind {
+	/// Creates a new `PaymentKind` from a serialized byte array.
+	pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, Error> {
+		let mut reader = lightning::io::Cursor::new(bytes);
+		LdkPaymentKind::read(&mut reader)
+			.map(|inner| PaymentKind { inner })
+			.map_err(|_| Error::InvalidPaymentKind)
+	}
+
+	/// Serializes the `PaymentKind` to a byte array.
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut buffer = Vec::new();
+		self.inner.write(&mut buffer).expect("Serialization failed");
+		buffer
+	}
+
+	/// Returns the variant name of the payment kind.
+	pub fn variant(&self) -> String {
+		match &self.inner {
+			LdkPaymentKind::Onchain { .. } => "Onchain".to_string(),
+			LdkPaymentKind::Bolt11 { .. } => "Bolt11".to_string(),
+			LdkPaymentKind::Bolt11Jit { .. } => "Bolt11Jit".to_string(),
+			LdkPaymentKind::Bolt12Offer { .. } => "Bolt12Offer".to_string(),
+			LdkPaymentKind::Bolt12Refund { .. } => "Bolt12Refund".to_string(),
+			LdkPaymentKind::Spontaneous { .. } => "Spontaneous".to_string(),
+		}
+	}
+
+	/// Returns the transaction ID, if applicable.
+	pub fn txid(&self) -> Option<Txid> {
+		match &self.inner {
+			LdkPaymentKind::Onchain { txid, .. } => Some(*txid),
+			_ => None,
+		}
+	}
+
+	/// Returns the confirmation status, if applicable.
+	pub fn status(&self) -> Option<ConfirmationStatus> {
+		match &self.inner {
+			LdkPaymentKind::Onchain { status, .. } => Some(*status),
+			_ => None,
+		}
+	}
+
+	/// Returns the payment hash, if applicable.
+	pub fn hash(&self) -> Option<PaymentHash> {
+		match &self.inner {
+			LdkPaymentKind::Bolt11 { hash, .. } => Some(*hash),
+			LdkPaymentKind::Bolt11Jit { hash, .. } => Some(*hash),
+			LdkPaymentKind::Bolt12Offer { hash, .. } => hash.clone(),
+			LdkPaymentKind::Bolt12Refund { hash, .. } => hash.clone(),
+			LdkPaymentKind::Spontaneous { hash, .. } => Some(*hash),
+			_ => None,
+		}
+	}
+
+	/// Returns the payment preimage, if applicable.
+	pub fn preimage(&self) -> Option<PaymentPreimage> {
+		match &self.inner {
+			LdkPaymentKind::Bolt11 { preimage, .. } => preimage.clone(),
+			LdkPaymentKind::Bolt11Jit { preimage, .. } => preimage.clone(),
+			LdkPaymentKind::Bolt12Offer { preimage, .. } => preimage.clone(),
+			LdkPaymentKind::Bolt12Refund { preimage, .. } => preimage.clone(),
+			LdkPaymentKind::Spontaneous { preimage, .. } => preimage.clone(),
+			_ => None,
+		}
+	}
+
+	/// Returns the payment secret, if applicable.
+	pub fn secret(&self) -> Option<PaymentSecret> {
+		match &self.inner {
+			LdkPaymentKind::Bolt11 { secret, .. } => secret.clone(),
+			LdkPaymentKind::Bolt11Jit { secret, .. } => secret.clone(),
+			LdkPaymentKind::Bolt12Offer { secret, .. } => secret.clone(),
+			LdkPaymentKind::Bolt12Refund { secret, .. } => secret.clone(),
+			_ => None,
+		}
+	}
+
+	/// Returns the counterparty skimmed fee in millisatoshis, if applicable.
+	pub fn counterparty_skimmed_fee_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkPaymentKind::Bolt11Jit { counterparty_skimmed_fee_msat, .. } => {
+				*counterparty_skimmed_fee_msat
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the LSP fee limits, if applicable.
+	pub fn lsp_fee_limits(&self) -> Option<LSPFeeLimits> {
+		match &self.inner {
+			LdkPaymentKind::Bolt11Jit { lsp_fee_limits, .. } => Some(*lsp_fee_limits),
+			_ => None,
+		}
+	}
+
+	/// Returns the offer ID, if applicable.
+	pub fn offer_id(&self) -> Option<OfferId> {
+		match &self.inner {
+			LdkPaymentKind::Bolt12Offer { offer_id, .. } => Some(*offer_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the payer note, if applicable.
+	pub fn payer_note(&self) -> Option<UntrustedString> {
+		match &self.inner {
+			LdkPaymentKind::Bolt12Offer { payer_note, .. } => payer_note.clone(),
+			LdkPaymentKind::Bolt12Refund { payer_note, .. } => payer_note.clone(),
+			_ => None,
+		}
+	}
+
+	/// Returns the quantity, if applicable.
+	pub fn quantity(&self) -> Option<u64> {
+		match &self.inner {
+			LdkPaymentKind::Bolt12Offer { quantity, .. } => *quantity,
+			LdkPaymentKind::Bolt12Refund { quantity, .. } => *quantity,
+			_ => None,
+		}
+	}
+}
+
+impl From<LdkPaymentKind> for PaymentKind {
+	fn from(inner: LdkPaymentKind) -> Self {
+		PaymentKind { inner }
+	}
+}
+
+impl std::ops::Deref for PaymentKind {
+	type Target = LdkPaymentKind;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl AsRef<LdkPaymentKind> for PaymentKind {
+	fn as_ref(&self) -> &LdkPaymentKind {
+		self.deref()
+	}
+}
+
+use crate::event::Event as LdkEvent;
+
+#[derive(Debug, Clone, PartialEq, Eq, Object)]
+pub struct Event {
+	pub(crate) inner: LdkEvent,
+}
+
+impl Event {
+	/// Creates a new `Event` from a serialized byte array.
+	pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, Error> {
+		let mut reader = lightning::io::Cursor::new(bytes);
+		LdkEvent::read(&mut reader).map(|inner| Event { inner }).map_err(|_| Error::InvalidEvent)
+	}
+
+	/// Serializes the `Event` to a byte array.
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut buffer = Vec::new();
+		self.inner.write(&mut buffer).expect("Serialization failed");
+		buffer
+	}
+
+	/// Returns the variant name of the event.
+	pub fn variant(&self) -> String {
+		match &self.inner {
+			LdkEvent::PaymentSuccessful { .. } => "PaymentSuccessful".to_string(),
+			LdkEvent::PaymentFailed { .. } => "PaymentFailed".to_string(),
+			LdkEvent::PaymentReceived { .. } => "PaymentReceived".to_string(),
+			LdkEvent::PaymentClaimable { .. } => "PaymentClaimable".to_string(),
+			LdkEvent::PaymentForwarded { .. } => "PaymentForwarded".to_string(),
+			LdkEvent::ChannelPending { .. } => "ChannelPending".to_string(),
+			LdkEvent::ChannelReady { .. } => "ChannelReady".to_string(),
+			LdkEvent::ChannelClosed { .. } => "ChannelClosed".to_string(),
+		}
+	}
+
+	/// Returns the payment ID, if applicable.
+	pub fn payment_id(&self) -> Option<PaymentId> {
+		match &self.inner {
+			LdkEvent::PaymentSuccessful { payment_id, .. } => payment_id.clone(),
+			LdkEvent::PaymentFailed { payment_id, .. } => payment_id.clone(),
+			LdkEvent::PaymentReceived { payment_id, .. } => payment_id.clone(),
+			LdkEvent::PaymentClaimable { payment_id, .. } => Some(*payment_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the payment hash, if applicable.
+	pub fn payment_hash(&self) -> Option<PaymentHash> {
+		match &self.inner {
+			LdkEvent::PaymentSuccessful { payment_hash, .. } => Some(*payment_hash),
+			LdkEvent::PaymentFailed { payment_hash, .. } => payment_hash.clone(),
+			LdkEvent::PaymentReceived { payment_hash, .. } => Some(*payment_hash),
+			LdkEvent::PaymentClaimable { payment_hash, .. } => Some(*payment_hash),
+			_ => None,
+		}
+	}
+
+	/// Returns the payment preimage, if applicable.
+	pub fn payment_preimage(&self) -> Option<PaymentPreimage> {
+		match &self.inner {
+			LdkEvent::PaymentSuccessful { payment_preimage, .. } => payment_preimage.clone(),
+			_ => None,
+		}
+	}
+
+	/// Returns the fee paid in millisatoshis, if applicable.
+	pub fn fee_paid_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentSuccessful { fee_paid_msat, .. } => *fee_paid_msat,
+			_ => None,
+		}
+	}
+
+	/// Returns the payment failure reason, if applicable.
+	pub fn reason(&self) -> Option<PaymentFailureReason> {
+		match &self.inner {
+			LdkEvent::PaymentFailed { reason, .. } => *reason,
+			_ => None,
+		}
+	}
+
+	/// Returns the amount received in millisatoshis, if applicable.
+	pub fn amount_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentReceived { amount_msat, .. } => Some(*amount_msat),
+			_ => None,
+		}
+	}
+
+	/// Returns the custom TLV records, if applicable.
+	pub fn custom_records(&self) -> Option<Vec<CustomTlvRecord>> {
+		match &self.inner {
+			LdkEvent::PaymentReceived { custom_records, .. } => Some(custom_records.clone()),
+			LdkEvent::PaymentClaimable { custom_records, .. } => Some(custom_records.clone()),
+			_ => None,
+		}
+	}
+
+	/// Returns the claimable amount in millisatoshis, if applicable.
+	pub fn claimable_amount_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentClaimable { claimable_amount_msat, .. } => {
+				Some(*claimable_amount_msat)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the claim deadline, if applicable.
+	pub fn claim_deadline(&self) -> Option<u32> {
+		match &self.inner {
+			LdkEvent::PaymentClaimable { claim_deadline, .. } => *claim_deadline,
+			_ => None,
+		}
+	}
+
+	/// Returns the previous channel ID, if applicable.
+	pub fn prev_channel_id(&self) -> Option<ChannelId> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { prev_channel_id, .. } => Some(*prev_channel_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the next channel ID, if applicable.
+	pub fn next_channel_id(&self) -> Option<ChannelId> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { next_channel_id, .. } => Some(*next_channel_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the previous user channel ID, if applicable.
+	pub fn prev_user_channel_id(&self) -> Option<UserChannelId> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { prev_user_channel_id, .. } => *prev_user_channel_id,
+			_ => None,
+		}
+	}
+
+	/// Returns the next user channel ID, if applicable.
+	pub fn next_user_channel_id(&self) -> Option<UserChannelId> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { next_user_channel_id, .. } => *next_user_channel_id,
+			_ => None,
+		}
+	}
+
+	/// Returns the previous node ID, if applicable.
+	pub fn prev_node_id(&self) -> Option<PublicKey> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { prev_node_id, .. } => *prev_node_id,
+			_ => None,
+		}
+	}
+
+	/// Returns the next node ID, if applicable.
+	pub fn next_node_id(&self) -> Option<PublicKey> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { next_node_id, .. } => *next_node_id,
+			_ => None,
+		}
+	}
+
+	/// Returns the total fee earned in millisatoshis, if applicable.
+	pub fn total_fee_earned_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { total_fee_earned_msat, .. } => *total_fee_earned_msat,
+			_ => None,
+		}
+	}
+
+	/// Returns the skimmed fee in millisatoshis, if applicable.
+	pub fn skimmed_fee_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { skimmed_fee_msat, .. } => *skimmed_fee_msat,
+			_ => None,
+		}
+	}
+
+	/// Returns whether the forwarded HTLC was claimed via an on-chain transaction.
+	pub fn claim_from_onchain_tx(&self) -> Option<bool> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { claim_from_onchain_tx, .. } => {
+				Some(*claim_from_onchain_tx)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the outbound amount forwarded in millisatoshis, if applicable.
+	pub fn outbound_amount_forwarded_msat(&self) -> Option<u64> {
+		match &self.inner {
+			LdkEvent::PaymentForwarded { outbound_amount_forwarded_msat, .. } => {
+				*outbound_amount_forwarded_msat
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the channel ID, if applicable.
+	pub fn channel_id(&self) -> Option<ChannelId> {
+		match &self.inner {
+			LdkEvent::ChannelPending { channel_id, .. } => Some(*channel_id),
+			LdkEvent::ChannelReady { channel_id, .. } => Some(*channel_id),
+			LdkEvent::ChannelClosed { channel_id, .. } => Some(*channel_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the user channel ID, if applicable.
+	pub fn user_channel_id(&self) -> Option<UserChannelId> {
+		match &self.inner {
+			LdkEvent::ChannelPending { user_channel_id, .. } => Some(*user_channel_id),
+			LdkEvent::ChannelReady { user_channel_id, .. } => Some(*user_channel_id),
+			LdkEvent::ChannelClosed { user_channel_id, .. } => Some(*user_channel_id),
+			_ => None,
+		}
+	}
+
+	/// Returns the former temporary channel ID, if applicable.
+	pub fn former_temporary_channel_id(&self) -> Option<ChannelId> {
+		match &self.inner {
+			LdkEvent::ChannelPending { former_temporary_channel_id, .. } => {
+				Some(*former_temporary_channel_id)
+			},
+			_ => None,
+		}
+	}
+
+	/// Returns the counterparty node ID, if applicable.
+	pub fn counterparty_node_id(&self) -> Option<PublicKey> {
+		match &self.inner {
+			LdkEvent::ChannelPending { counterparty_node_id, .. } => Some(*counterparty_node_id),
+			LdkEvent::ChannelReady { counterparty_node_id, .. } => *counterparty_node_id,
+			LdkEvent::ChannelClosed { counterparty_node_id, .. } => *counterparty_node_id,
+			_ => None,
+		}
+	}
+
+	/// Returns the funding transaction outpoint, if applicable.
+	pub fn funding_txo(&self) -> Option<OutPoint> {
+		match &self.inner {
+			LdkEvent::ChannelPending { funding_txo, .. } => Some(*funding_txo),
+			_ => None,
+		}
+	}
+
+	/// Returns the closure reason, if applicable.
+	pub fn closure_reason(&self) -> Option<ClosureReason> {
+		match &self.inner {
+			LdkEvent::ChannelClosed { reason, .. } => *reason,
+			_ => None,
+		}
+	}
+}
+
+impl From<LdkEvent> for Event {
+	fn from(inner: LdkEvent) -> Self {
+		Event { inner }
+	}
+}
+
+impl std::ops::Deref for Event {
+	type Target = LdkEvent;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+impl AsRef<LdkEvent> for Event {
+	fn as_ref(&self) -> &LdkEvent {
+		self.deref()
 	}
 }
 
